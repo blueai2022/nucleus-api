@@ -17,10 +17,17 @@ type Service struct {
 func New(opts ...connect.HandlerOption) (*Service, error) {
 	svc := &Service{}
 
-	svc.connectPath, svc.connectHandler = nucleusv1connect.NewNucleusServiceHandler(svc, opts...)
+	path, handler := nucleusv1connect.NewNucleusServiceHandler(svc, opts...)
+	svc.connectPath = path
+	svc.connectHandler = handler
 
-	vanguardService := vanguard.NewService(nucleusv1connect.NucleusServiceName, svc.connectHandler)
-	vanguardHandler, err := vanguard.NewTranscoder([]*vanguard.Service{vanguardService})
+	vanguardService := vanguard.NewService(
+		nucleusv1connect.NucleusServiceName,
+		svc.connectHandler,
+	)
+	vanguardHandler, err := vanguard.NewTranscoder(
+		[]*vanguard.Service{vanguardService},
+	)
 	if err != nil {
 		return nil, err
 	}
