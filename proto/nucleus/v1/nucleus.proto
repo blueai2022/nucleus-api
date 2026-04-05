@@ -1,0 +1,35 @@
+syntax = "proto3";
+
+package nucleus.v1;
+
+option go_package = "github.com/blueai2022/nucleus/pkg/nucleus/v1;nucleusv1";
+
+service NucleusService {
+  rpc GetStarterImplementation(GetStarterImplementationRequest) returns (GetStarterImplementationResponse);
+}
+
+message GetStarterImplementationRequest {
+  string project_id       = 1;
+  string requirement_code = 2;
+}
+
+message GetStarterImplementationResponse {
+  string      implementation = 1; // markdown-formatted starter code
+  Status      status         = 2;
+  ErrorReason error_reason   = 3;
+  string      message        = 4;
+}
+
+enum Status {
+  STATUS_UNSPECIFIED = 0;
+  STATUS_SUCCESS     = 1;
+  STATUS_ERROR       = 2;
+}
+
+enum ErrorReason {
+  ERROR_REASON_UNSPECIFIED        = 0;
+  ERROR_REASON_PROJECT_NOT_FOUND  = 1;
+  ERROR_REASON_REQUIREMENT_NOT_FOUND = 2;
+  ERROR_REASON_INVALID_INPUT      = 3;
+  ERROR_REASON_INTERNAL           = 4;
+}
