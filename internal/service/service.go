@@ -15,24 +15,24 @@ type Service struct {
 }
 
 func New(opts ...connect.HandlerOption) (*Service, error) {
-	s := &Service{}
+	svc := &Service{}
 
-	s.connectPath, s.connectHandler = nucleusv1connect.NewNucleusServiceHandler(s, opts...)
+	svc.connectPath, svc.connectHandler = nucleusv1connect.NewNucleusServiceHandler(svc, opts...)
 
-	vSvc := vanguard.NewService(nucleusv1connect.NucleusServiceName, s.connectHandler)
-	vHandler, err := vanguard.NewTranscoder([]*vanguard.Service{vSvc})
+	vanguardService := vanguard.NewService(nucleusv1connect.NucleusServiceName, svc.connectHandler)
+	vanguardHandler, err := vanguard.NewTranscoder([]*vanguard.Service{vanguardService})
 	if err != nil {
 		return nil, err
 	}
-	s.vanguardHandler = vHandler
+	svc.vanguardHandler = vanguardHandler
 
-	return s, nil
+	return svc, nil
 }
 
-func (s *Service) ConnectHandler() (string, http.Handler) {
-	return s.connectPath, s.connectHandler
+func (svc *Service) ConnectHandler() (string, http.Handler) {
+	return svc.connectPath, svc.connectHandler
 }
 
-func (s *Service) VanguardHandler() (string, http.Handler) {
-	return "/", s.vanguardHandler
+func (svc *Service) VanguardHandler() (string, http.Handler) {
+	return "/", svc.vanguardHandler
 }
