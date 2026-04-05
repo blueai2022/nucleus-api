@@ -10,21 +10,15 @@ import (
 )
 
 // Ensure Handler implements the generated interface.
-var _ nucleusv1connect.NucleusServiceHandler = (*Handler)(nil)
+var _ nucleusv1connect.NucleusServiceHandler = (*Service)(nil)
 
-type Handler struct{}
-
-func NewHandler() *Handler {
-	return &Handler{}
-}
-
-func (h *Handler) GetStarterImplementation(
+func (s *Service) GetStarterImplementation(
 	ctx context.Context,
 	req *connect.Request[nucleusv1.GetStarterImplementationRequest],
 ) (*connect.Response[nucleusv1.GetStarterImplementationResponse], error) {
 
-	projectID := req.Msg.ProjectId
-	reqCode := req.Msg.RequirementCode
+	projectID := req.Msg.GetProjectId()
+	reqCode := req.Msg.GetRequirementCode()
 
 	if projectID == "" || reqCode == "" {
 		return connect.NewResponse(&nucleusv1.GetStarterImplementationResponse{

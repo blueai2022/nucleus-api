@@ -8,7 +8,6 @@ import (
 
 	"github.com/blueai2022/nucleus/internal/config"
 	"github.com/blueai2022/nucleus/internal/service"
-	"github.com/blueai2022/nucleus/pkg/nucleus/v1/nucleusv1connect"
 	"github.com/rs/zerolog/log"
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/h2c"
@@ -32,11 +31,18 @@ func main() {
 
 	mux := http.NewServeMux()
 
-	handler := service.NewHandler()
-	path, connectHandler := nucleusv1connect.NewNucleusServiceHandler(handler)
+	svc, err := service.New()
+	if err != nil {
+		log.Fatal().Err(err).Msg("failed to create service")
+		return
+	}
+
+	path, connectHandler := svc.ConnectHandler()
 	mux.Handle(path, connectHandler)
 
-	// Replace httpServer.Handler to support HTTP/2 (required for gRPC):
+	path, vanguardHandler := svc.VanguardHandler()
+	mux.Handle(path, vanguardHandler)
+
 	httpServer := &http.Server{
 		Addr:    settings.HTTP.Address(),
 		Handler: h2c.NewHandler(mux, &http2.Server{}),
