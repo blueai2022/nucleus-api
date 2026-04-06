@@ -25,12 +25,14 @@ func New(opts ...connect.HandlerOption) (*Service, error) {
 		nucleusv1connect.NucleusServiceName,
 		svc.connectHandler,
 	)
+
 	vanguardHandler, err := vanguard.NewTranscoder(
 		[]*vanguard.Service{vanguardService},
 	)
 	if err != nil {
 		return nil, err
 	}
+
 	svc.vanguardHandler = vanguardHandler
 
 	return svc, nil

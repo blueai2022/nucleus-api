@@ -74,21 +74,19 @@ func (s *Settings) Validate() error {
 }
 
 // Options defines a function type for setting options.
-type Options func(*Settings) error
+type Options func(*Settings)
 
 // WithPath sets the configuration file path.
 func WithPath(path string) Options {
-	return func(s *Settings) error {
+	return func(s *Settings) {
 		s.path = path
-		return nil
 	}
 }
 
 // WithContext sets a context for the level watcher.
 func WithContext(ctx context.Context) Options {
-	return func(s *Settings) error {
+	return func(s *Settings) {
 		s.ctx = ctx
-		return nil
 	}
 }
 
@@ -108,11 +106,10 @@ func New(opts ...Options) (*Settings, error) {
 	}
 
 	for _, opt := range opts {
-		if err := opt(settings); err != nil {
-			return nil, err
-		}
+		opt(settings)
 	}
 
+	// Load calls settings.Validate()
 	if err := settings.Load(); err != nil {
 		return nil, fmt.Errorf("failed to load configuration: %v", err)
 	}
@@ -156,8 +153,8 @@ func (s *Settings) readFile() error {
 	if err := s.unmarshal(contents); err != nil {
 		return err
 	}
-	return nil
 
+	return nil
 }
 
 // unmarshal unmarshals the byte slice into the Settings object

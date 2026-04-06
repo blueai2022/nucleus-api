@@ -16,7 +16,6 @@ func (s *Service) GetStarterImplementation(
 	ctx context.Context,
 	req *connect.Request[nucleusv1.GetStarterImplementationRequest],
 ) (*connect.Response[nucleusv1.GetStarterImplementationResponse], error) {
-
 	projectID := req.Msg.GetProjectId()
 	reqCode := req.Msg.GetRequirementCode()
 
@@ -39,7 +38,7 @@ func (s *Service) GetStarterImplementation(
 	}
 
 	// TODO: generate real starter implementation
-	markdown := fmt.Sprintf("```\n// Starter implementation for %s\n```", reqCode)
+	markdown := fmt.Sprintf("## Starter Implementation of %s", reqCode)
 
 	return connect.NewResponse(&nucleusv1.GetStarterImplementationResponse{
 		Status:         nucleusv1.Status_STATUS_SUCCESS,
