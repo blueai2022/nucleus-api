@@ -8,6 +8,7 @@ import (
 
 	"github.com/blueai2022/nucleus/internal/config"
 	"github.com/blueai2022/nucleus/internal/service"
+	"github.com/blueai2022/nucleus/internal/session"
 	"github.com/rs/zerolog/log"
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/h2c"
@@ -31,7 +32,9 @@ func main() {
 
 	mux := http.NewServeMux()
 
-	svc, err := service.New()
+	sessionManager := session.NewManager()
+
+	svc, err := service.New(sessionManager)
 	if err != nil {
 		log.Fatal().Err(err).Msg("failed to create service")
 		return

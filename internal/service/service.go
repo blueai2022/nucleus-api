@@ -5,17 +5,19 @@ import (
 
 	"connectrpc.com/connect"
 	"connectrpc.com/vanguard"
+	"github.com/blueai2022/nucleus/internal/session"
 	"github.com/blueai2022/nucleus/pkg/nucleus/v1/nucleusv1connect"
 )
 
 type Service struct {
+	sessions        session.Manager
 	connectPath     string
 	connectHandler  http.Handler
 	vanguardHandler http.Handler
 }
 
-func New(opts ...connect.HandlerOption) (*Service, error) {
-	svc := &Service{}
+func New(sessions session.Manager, opts ...connect.HandlerOption) (*Service, error) {
+	svc := &Service{sessions: sessions}
 
 	path, handler := nucleusv1connect.NewNucleusServiceHandler(svc, opts...)
 	svc.connectPath = path
@@ -25,7 +27,6 @@ func New(opts ...connect.HandlerOption) (*Service, error) {
 		nucleusv1connect.NucleusServiceName,
 		svc.connectHandler,
 	)
-
 	vanguardHandler, err := vanguard.NewTranscoder(
 		[]*vanguard.Service{vanguardService},
 	)
