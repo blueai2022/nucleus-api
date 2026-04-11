@@ -29,6 +29,8 @@ type Settings struct {
 	HTTP HTTPSettings `json:"http" yaml:"http"`
 	// Log holds the configuration for the logger.
 	Log Log `json:"log"  yaml:"log"`
+	// WorkspaceRoot is the root directory for session workspaces.
+	WorkspaceRoot string `json:"workspace_root" yaml:"workspace_root"`
 
 	// path is the path to the configuration file.
 	path string
@@ -67,6 +69,10 @@ func (s *Settings) Validate() error {
 
 	if s.HTTP.ShutdownTimeout == 0 {
 		s.HTTP.ShutdownTimeout = defaultShutdownTimeout
+	}
+
+	if s.WorkspaceRoot == "" {
+		s.WorkspaceRoot = "./workspaces" // Default if not specified
 	}
 
 	return nil

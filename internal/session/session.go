@@ -3,6 +3,8 @@ package session
 import (
 	"context"
 	"errors"
+
+	anthropic "github.com/anthropics/anthropic-sdk-go"
 )
 
 var (
@@ -12,24 +14,21 @@ var (
 
 // Session represents an active code session.
 type Session struct {
-	ProjectID       string
-	RequirementCode string
+	ProjectID     string
+	WorkspaceRoot string
+	client        anthropic.Client
+	tools         []anthropic.BetaTool
+	messages      []anthropic.BetaMessageParam
 }
 
 // Manager retrieves and validates active code sessions.
 type Manager interface {
-	// Session retrieves an active code session for the given project and requirement.
-	Session(ctx context.Context, projectID, requirementCode string) (*Session, error)
-}
+	// Create creates a new code session for the given project and requirement.
+	Create(ctx context.Context, projectID, requirementCode string) (*Session, error)
 
-// manager implements Manager.
-type manager struct{}
+	// Close closes the session for the given project and requirement.
+	Close(projectID, requirementCode string) error
 
-func NewManager() Manager {
-	return &manager{}
-}
-
-func (m *manager) Session(ctx context.Context, projectID, requirementCode string) (*Session, error) {
-	// TODO: retrieve active session for projectID + requirementCode
-	return nil, ErrRequirementNotFound
+	// Session retrieves an existing session
+	Session(projectID, requirementCode string) (*Session, error)
 }

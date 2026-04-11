@@ -6,6 +6,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/blueai2022/nucleus/internal/config"
 	"github.com/blueai2022/nucleus/internal/service"
 	"github.com/blueai2022/nucleus/internal/session"
@@ -32,7 +33,11 @@ func main() {
 
 	mux := http.NewServeMux()
 
-	sessionManager := session.NewManager()
+	// Create Anthropic client (reads ANTHROPIC_API_KEY from env)
+	client := anthropic.NewClient()
+
+	// Create session manager with client and workspace root
+	sessionManager := session.NewManager(client, settings.WorkspaceRoot)
 
 	svc, err := service.New(sessionManager)
 	if err != nil {
@@ -84,4 +89,5 @@ func main() {
 	log.Info().
 		Str("event.action", "shutdown").
 		Msg("shutdown complete")
+
 }

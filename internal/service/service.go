@@ -14,6 +14,8 @@ type Service struct {
 	connectPath     string
 	connectHandler  http.Handler
 	vanguardHandler http.Handler
+
+	chatManager session.Manager
 }
 
 func New(sessions session.Manager, opts ...connect.HandlerOption) (*Service, error) {
