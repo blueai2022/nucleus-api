@@ -6,8 +6,8 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/blueai2022/nucleus/internal/config"
+	"github.com/blueai2022/nucleus/internal/requirements"
 	"github.com/blueai2022/nucleus/internal/service"
 	"github.com/blueai2022/nucleus/internal/session"
 	"github.com/rs/zerolog/log"
@@ -33,13 +33,11 @@ func main() {
 
 	mux := http.NewServeMux()
 
-	// Create Anthropic client (reads ANTHROPIC_API_KEY from env)
-	client := anthropic.NewClient()
+	reqRegistry := requirements.NewRegistry()
 
-	// Create session manager with client and workspace root
-	sessionManager := session.NewManager(client, settings.WorkspaceRoot)
+	sessionManager := session.NewManager(settings.WorkspaceRoot, settings.TemplateRoot)
 
-	svc, err := service.New(sessionManager)
+	svc, err := service.New(sessionManager, reqRegistry)
 	if err != nil {
 		log.Fatal().Err(err).Msg("failed to create service")
 		return

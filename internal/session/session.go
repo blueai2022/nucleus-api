@@ -10,7 +10,29 @@ import (
 var (
 	ErrProjectNotFound     = errors.New("project not found")
 	ErrRequirementNotFound = errors.New("requirement not found")
+	ErrSessionNotFound     = errors.New("session not found")
 )
+
+// Manager manages Claude Code sessions for code generation
+type Manager interface {
+	// CreateSession creates a new Claude Code session with composed workspace
+	CreateSession(ctx context.Context, config SessionConfig) (*ClaudeCodeSession, error)
+
+	// Session retrieves an existing session
+	Session(projectID, requirementCode string) (*ClaudeCodeSession, error)
+
+	// CloseSession cleans up a session and its workspace
+	CloseSession(projectID, requirementCode string) error
+}
+
+// SessionConfig contains parameters for creating a session
+type SessionConfig struct {
+	ProjectID            string
+	RequirementCode      string
+	Language             Language
+	MainProjectPath      string
+	TemplateRequirements []string
+}
 
 // Session represents an active code session.
 type Session struct {
@@ -19,16 +41,4 @@ type Session struct {
 	client        anthropic.Client
 	tools         []anthropic.BetaTool
 	messages      []anthropic.BetaMessageParam
-}
-
-// Manager retrieves and validates active code sessions.
-type Manager interface {
-	// Create creates a new code session for the given project and requirement.
-	Create(ctx context.Context, projectID, requirementCode string) (*Session, error)
-
-	// Close closes the session for the given project and requirement.
-	Close(projectID, requirementCode string) error
-
-	// Session retrieves an existing session
-	Session(projectID, requirementCode string) (*Session, error)
 }

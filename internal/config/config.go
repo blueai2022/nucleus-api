@@ -31,6 +31,8 @@ type Settings struct {
 	Log Log `json:"log"  yaml:"log"`
 	// WorkspaceRoot is the root directory for session workspaces.
 	WorkspaceRoot string `json:"workspace_root" yaml:"workspace_root"`
+	// TemplateRoot is the root directory for code templates.
+	TemplateRoot string `json:"template_root" yaml:"template_root"`
 
 	// path is the path to the configuration file.
 	path string
@@ -71,12 +73,18 @@ func (s *Settings) Validate() error {
 		s.HTTP.ShutdownTimeout = defaultShutdownTimeout
 	}
 
+	const defaultWorkspaceRoot = "./workspaces"
+	const defaultTemplateRoot = "./templates"
+
 	if s.WorkspaceRoot == "" {
-		s.WorkspaceRoot = "./workspaces" // Default if not specified
+		s.WorkspaceRoot = defaultWorkspaceRoot
+	}
+
+	if s.TemplateRoot == "" {
+		s.TemplateRoot = defaultTemplateRoot
 	}
 
 	return nil
-
 }
 
 // Options defines a function type for setting options.

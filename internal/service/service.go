@@ -5,21 +5,24 @@ import (
 
 	"connectrpc.com/connect"
 	"connectrpc.com/vanguard"
+	"github.com/blueai2022/nucleus/internal/requirements"
 	"github.com/blueai2022/nucleus/internal/session"
 	"github.com/blueai2022/nucleus/pkg/nucleus/v1/nucleusv1connect"
 )
 
 type Service struct {
-	sessions        session.Manager
+	sessionManager  session.Manager
+	reqRegistry     requirements.Registry
 	connectPath     string
 	connectHandler  http.Handler
 	vanguardHandler http.Handler
-
-	chatManager session.Manager
 }
 
-func New(sessions session.Manager, opts ...connect.HandlerOption) (*Service, error) {
-	svc := &Service{sessions: sessions}
+func New(sessionManager session.Manager, reqRegistry requirements.Registry, opts ...connect.HandlerOption) (*Service, error) {
+	svc := &Service{
+		sessionManager: sessionManager,
+		reqRegistry:    reqRegistry,
+	}
 
 	path, handler := nucleusv1connect.NewNucleusServiceHandler(svc, opts...)
 	svc.connectPath = path
