@@ -59,17 +59,15 @@ func (s *ClaudeCodeSession) Generate(ctx context.Context, request CodeGeneration
 
 	args := []string{
 		"-p",
-		"--permission-mode", "auto", // Auto-approve safe operations
+		"--permission-mode", "auto",
 	}
 
-	// Add directories for tool access (examples, etc.)
 	if len(request.ExampleDirs) > 0 {
 		for _, dir := range request.ExampleDirs {
 			args = append(args, "--add-dir", dir)
 		}
 	}
 
-	// Build the full prompt with file context
 	fullPrompt := request.Prompt
 	if request.TargetFile != "" {
 		fullPrompt = fmt.Sprintf("Working on file: %s\n\n%s", request.TargetFile, request.Prompt)
@@ -148,7 +146,9 @@ func (s *ClaudeCodeSession) Generate(ctx context.Context, request CodeGeneration
 // CodeGenerationRequest represents a request to generate code
 type CodeGenerationRequest struct {
 	Prompt      string
-	TargetFile  string // Optional: specific file to work on
+	TargetFile  string // Optional: file to pin as context (like Copilot)
+	StartLine   int    // Optional: start of highlighted range (1-indexed)
+	EndLine     int    // Optional: end of highlighted range (1-indexed)
 	ExampleDirs []string
 }
 
