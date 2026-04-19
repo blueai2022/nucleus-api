@@ -59,7 +59,9 @@ func (s *ClaudeCodeSession) Generate(ctx context.Context, request CodeGeneration
 
 	args := []string{
 		"-p",
-		"--permission-mode", "auto",
+		"--dangerously-skip-permissions",
+		"--model", "sonnet",
+		"--add-dir", ".",
 	}
 
 	if len(request.ExampleDirs) > 0 {
@@ -79,7 +81,7 @@ func (s *ClaudeCodeSession) Generate(ctx context.Context, request CodeGeneration
 	cmd.Dir = s.WorkspaceRoot
 
 	var inputBuf bytes.Buffer
-	inputBuf.WriteString(request.Prompt)
+	inputBuf.WriteString(fullPrompt)
 	cmd.Stdin = &inputBuf
 
 	var stdout, stderr bytes.Buffer
@@ -100,47 +102,65 @@ func (s *ClaudeCodeSession) Generate(ctx context.Context, request CodeGeneration
 		Int("output_length", len(output)).
 		Msg("received claude code response")
 
-	// Default to extracting code blocks from stdout
-	code := extractCode(output)
-
-	// If target file specified, try to generate a diff
-	if request.TargetFile != "" {
-		filePath := filepath.Join(s.WorkspaceRoot, request.TargetFile)
-		if newContent, err := os.ReadFile(filePath); err == nil {
-			newContentStr := string(newContent)
-
-			// Only use diff if the file actually changed
-			if originalContent != newContentStr {
-				diff := generateUnifiedDiff(originalContent, newContentStr, request.TargetFile)
-				if diff != "" {
-					code = diff
-					log.Debug().
-						Str("target_file", request.TargetFile).
-						Int("diff_length", len(code)).
-						Msg("generated diff for modified file")
-				} else {
-					// File exists but no changes detected, return new content
-					code = newContentStr
-				}
-			} else {
-				// No changes, fall back to extractCode from stdout
-				log.Debug().
-					Str("target_file", request.TargetFile).
-					Msg("file unchanged, using extracted code from output")
-			}
-		} else {
-			log.Warn().
-				Err(err).
-				Str("target_file", request.TargetFile).
-				Msg("failed to read target file, using extracted code from output")
-		}
-	}
+	// Generate result: diff if file changed, otherwise extracted code from stdout
+	code := s.generateResult(request.TargetFile, originalContent, output)
 
 	return &CodeGenerationResponse{
 		Code:       code,
 		RawOutput:  output,
 		TargetFile: request.TargetFile,
 	}, nil
+}
+
+// generateResult determines what to return: a diff if the file was modified,
+// the new file content if created, or extracted code blocks from stdout.
+func (s *ClaudeCodeSession) generateResult(targetFile, originalContent, stdout string) string {
+	if targetFile == "" {
+		return extractCode(stdout)
+	}
+
+	filePath := filepath.Join(s.WorkspaceRoot, targetFile)
+	newContent, err := os.ReadFile(filePath)
+	if err != nil {
+		log.Warn().
+			Err(err).
+			Str("target_file", targetFile).
+			Msg("target file not found after execution, using extracted code from output")
+		return extractCode(stdout)
+	}
+
+	newContentStr := string(newContent)
+
+	// File unchanged - return extracted code from stdout
+	if originalContent == newContentStr {
+		log.Debug().
+			Str("target_file", targetFile).
+			Msg("file unchanged, using extracted code from output")
+
+		return extractCode(stdout)
+	}
+
+	diff, err := generateUnifiedDiff(originalContent, newContentStr, targetFile)
+	if err != nil {
+		log.Error().
+			Err(err).
+			Str("target_file", targetFile).
+			Msg("failed to generate diff, returning new content")
+
+		return newContentStr
+	}
+
+	if diff != "" {
+		log.Debug().
+			Str("target_file", targetFile).
+			Int("diff_length", len(diff)).
+			Msg("generated diff for modified file")
+
+		return diff
+	}
+
+	// Diff generation returned "" due to some error, use fallback
+	return newContentStr
 }
 
 // CodeGenerationRequest represents a request to generate code
@@ -195,23 +215,25 @@ func extractCode(output string) string {
 }
 
 // generateUnifiedDiff creates a unified diff between old and new content
-func generateUnifiedDiff(original, modified, filename string) string {
+func generateUnifiedDiff(original, modified, filename string) (string, error) {
 	if original == modified {
-		return "" // No changes
+		return "", nil
 	}
+
+	const linesOfContext = 3
 
 	diff := difflib.UnifiedDiff{
 		A:        difflib.SplitLines(original),
 		B:        difflib.SplitLines(modified),
 		FromFile: "a/" + filename,
 		ToFile:   "b/" + filename,
-		Context:  3, // Lines of context
+		Context:  linesOfContext,
 	}
 
 	result, err := difflib.GetUnifiedDiffString(diff)
 	if err != nil {
-		return "" // Fallback
+		return "", fmt.Errorf("failed to generate unified diff: %w", err)
 	}
 
-	return result
+	return result, nil
 }
