@@ -6,6 +6,13 @@ make build
 make run
 
 # 3. In another terminal, test the endpoint
+curl -X POST http://127.0.0.1:8080/nucleus.v1.NucleusService/GetStarterImplementation \
+  -H "Content-Type: application/json" \
+  -d '{
+    "project_id": "test-001",
+    "requirement_code": "REQ-123"
+  }' | jq .
+
 curl -s -X POST http://127.0.0.1:8080/nucleus.v1.NucleusService/GetStarterImplementation \
   -H "Content-Type: application/json" \
   -d '{"project_id": "proj-123", "requirement_code": "REQ-1.01"}' | jq .
@@ -14,9 +21,3 @@ curl -s -X POST http://127.0.0.1:8080/nucleus.v1.NucleusService/GetStarterImplem
   -H "Content-Type: application/json" \
   -d '{}' | jq .
 
-  curl -X POST http://127.0.0.1:8080/nucleus.v1.NucleusService/GetStarterImplementation \
-  -H "Content-Type: application/json" \
-  -d '{
-    "project_id": "test-001",
-    "requirement_code": "REQ-123"
-  }' | jq .

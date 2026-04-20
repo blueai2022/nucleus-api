@@ -14,10 +14,25 @@ message GetStarterImplementationRequest {
 }
 
 message GetStarterImplementationResponse {
-  string      implementation = 1; // markdown-formatted starter code
-  Status      status         = 2;
-  ErrorReason error_reason   = 3;
-  string      message        = 4;
+  string      implementation  = 1; // markdown-formatted starter code
+  Status      status          = 2;
+  ErrorReason error_reason    = 3;
+  string      message         = 4;
+  CodeChange  main_code_change = 5; // The primary code change
+}
+
+// CodeChange represents the main code change from Claude
+message CodeChange {
+  string   code      = 1; // Full code content after modifications
+  string   file_name = 2; // File path relative to workspace
+  FileType file_type = 3; // Whether this is a new or modified file
+}
+
+// FileType indicates whether a file is new or modified
+enum FileType {
+  FILE_TYPE_UNSPECIFIED = 0;
+  FILE_TYPE_NEW         = 1;
+  FILE_TYPE_MODIFIED    = 2;
 }
 
 enum Status {
@@ -27,9 +42,9 @@ enum Status {
 }
 
 enum ErrorReason {
-  ERROR_REASON_UNSPECIFIED        = 0;
-  ERROR_REASON_PROJECT_NOT_FOUND  = 1;
+  ERROR_REASON_UNSPECIFIED           = 0;
+  ERROR_REASON_PROJECT_NOT_FOUND     = 1;
   ERROR_REASON_REQUIREMENT_NOT_FOUND = 2;
-  ERROR_REASON_INVALID_INPUT      = 3;
-  ERROR_REASON_INTERNAL           = 4;
+  ERROR_REASON_INVALID_INPUT         = 3;
+  ERROR_REASON_INTERNAL              = 4;
 }

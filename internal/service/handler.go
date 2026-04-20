@@ -47,7 +47,7 @@ func (s *Service) GetStarterImplementation(
 	claudeSession, err := s.sessionManager.CreateSession(ctx, session.SessionConfig{
 		ProjectID:            projectID,
 		RequirementCode:      reqCode,
-		Language:             reqMeta.Language, // From metadata
+		Language:             reqMeta.Language,
 		MainProjectPath:      mainProjectPath,
 		TemplateRequirements: templateReqs,
 	})
@@ -78,16 +78,11 @@ func (s *Service) GetStarterImplementation(
 	log.Info().
 		Str("project_id", projectID).
 		Str("requirement_code", reqCode).
+		Interface("metadata", reqMeta).
 		Msg("generating implementation")
 
-	response, err := claudeSession.Generate(ctx, session.CodeGenerationRequest{
-		// 		Prompt: fmt.Sprintf(`Generate implementation for requirement: %s
-
-		// Read the requirement details and reference pkg/examples/ for PR-approved code patterns and styles.
-
-		// Provide complete, production-ready code following the team's conventions.`, reqCode),
-		// ExampleDirs: []string{"pkg/examples"},
-		TargetFile:  reqMeta.TargetFile,     // From metadata
+	codeGenResp, err := claudeSession.Generate(ctx, session.CodeGenerationRequest{
+		ContextFile: reqMeta.TargetFile,     // From metadata
 		ExampleDirs: reqMeta.ExampleDirs,    // From metadata
 		Prompt:      reqMeta.PromptTemplate, // From metadata
 	})
@@ -109,12 +104,19 @@ func (s *Service) GetStarterImplementation(
 	log.Info().
 		Str("project_id", projectID).
 		Str("requirement_code", reqCode).
-		Int("code_length", len(response.Code)).
+		Int("code_length", len(codeGenResp.TextResponse)).
 		Msg("implementation generated successfully")
 
-	return connect.NewResponse(&nucleusv1.GetStarterImplementationResponse{
-		Status:         nucleusv1.Status_STATUS_SUCCESS,
-		Implementation: response.Code,
+	response := &nucleusv1.GetStarterImplementationResponse{
+		Status: nucleusv1.Status_STATUS_SUCCESS,
+		MainCodeChange: &nucleusv1.CodeChange{
+			Code:     codeGenResp.MainCodeChange.Code,
+			FileName: codeGenResp.MainCodeChange.FileName,
+			FileType: codeGenResp.MainCodeChange.FileType.ToProto(),
+		},
+		Implementation: codeGenResp.RawOutput,
 		Message:        "implementation generated successfully",
-	}), nil
+	}
+
+	return connect.NewResponse(response), nil
 }

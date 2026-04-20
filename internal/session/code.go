@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	nucleusv1 "github.com/blueai2022/nucleus/pkg/nucleus/v1"
 	"github.com/pmezard/go-difflib/difflib"
 	"github.com/rs/zerolog/log"
 )
@@ -45,17 +46,10 @@ func verifyClaudeCode() error {
 func (s *ClaudeCodeSession) Generate(ctx context.Context, request CodeGenerationRequest) (*CodeGenerationResponse, error) {
 	log.Info().
 		Str("project_id", s.ProjectID).
-		Str("target_file", request.TargetFile).
+		Str("context_file", request.ContextFile).
 		Msg("invoking claude code")
 
-	// Read the target file BEFORE Claude runs (if it exists)
-	var originalContent string
-	if request.TargetFile != "" {
-		filePath := filepath.Join(s.WorkspaceRoot, request.TargetFile)
-		if fileContent, err := os.ReadFile(filePath); err == nil {
-			originalContent = string(fileContent)
-		}
-	}
+	originalFiles := s.snapshotWorkspace()
 
 	args := []string{
 		"-p",
@@ -64,18 +58,12 @@ func (s *ClaudeCodeSession) Generate(ctx context.Context, request CodeGeneration
 		"--add-dir", ".",
 	}
 
-	if len(request.ExampleDirs) > 0 {
-		for _, dir := range request.ExampleDirs {
-			args = append(args, "--add-dir", dir)
-		}
+	for _, dir := range request.ExampleDirs {
+		args = append(args, "--add-dir", dir)
 	}
 
-	fullPrompt := request.Prompt
-	if request.TargetFile != "" {
-		fullPrompt = fmt.Sprintf("Working on file: %s\n\n%s", request.TargetFile, request.Prompt)
-	}
-
-	args = append(args, fullPrompt)
+	// Build minimal prompt with file reference, Claude tools read it
+	fullPrompt := buildPromptWithFileReference(request)
 
 	cmd := exec.CommandContext(ctx, "claude", args...)
 	cmd.Dir = s.WorkspaceRoot
@@ -102,81 +90,269 @@ func (s *ClaudeCodeSession) Generate(ctx context.Context, request CodeGeneration
 		Int("output_length", len(output)).
 		Msg("received claude code response")
 
-	// Generate result: diff if file changed, otherwise extracted code from stdout
-	code := s.generateResult(request.TargetFile, originalContent, output)
+	response := &CodeGenerationResponse{
+		TextResponse:  extractTextResponse(output),
+		RawOutput:     output,
+		ContextFile:   request.ContextFile,
+		ModifiedFiles: make([]FileChange, 0),
+		NewFiles:      make([]FileInfo, 0),
+	}
 
-	return &CodeGenerationResponse{
-		Code:       code,
-		RawOutput:  output,
-		TargetFile: request.TargetFile,
-	}, nil
+	s.detectChanges(originalFiles, response)
+
+	response.MainCodeChange = determineMainCodeChange(
+		request.ContextFile,
+		response.ModifiedFiles,
+		response.NewFiles,
+	)
+
+	return response, nil
 }
 
-// generateResult determines what to return: a diff if the file was modified,
-// the new file content if created, or extracted code blocks from stdout.
-func (s *ClaudeCodeSession) generateResult(targetFile, originalContent, stdout string) string {
-	if targetFile == "" {
-		return extractCode(stdout)
+// snapshotWorkspace captures the current state of all files in the workspace
+func (s *ClaudeCodeSession) snapshotWorkspace() map[string]string {
+	snapshot := make(map[string]string)
+
+	filepath.Walk(s.WorkspaceRoot, func(path string, info os.FileInfo, err error) error {
+		if err != nil || info.IsDir() {
+			return nil
+		}
+
+		// Skip hidden files and node_modules, etc.
+		if strings.Contains(path, "/.") || strings.Contains(path, "/node_modules/") {
+			return nil
+		}
+
+		relPath, err := filepath.Rel(s.WorkspaceRoot, path)
+		if err != nil {
+			return nil
+		}
+
+		content, err := os.ReadFile(path)
+		if err != nil {
+			return nil
+		}
+
+		snapshot[relPath] = string(content)
+		return nil
+	})
+
+	return snapshot
+}
+
+// detectChanges compares before/after snapshots and populates the response
+func (s *ClaudeCodeSession) detectChanges(originalFiles map[string]string, response *CodeGenerationResponse) {
+	currentFiles := s.snapshotWorkspace()
+
+	// Find modified files
+	for filePath, originalContent := range originalFiles {
+		if newContent, exists := currentFiles[filePath]; exists {
+			if originalContent != newContent {
+				diff, err := generateUnifiedDiff(originalContent, newContent, filePath)
+				if err != nil {
+					log.Error().Err(err).Str("file", filePath).Msg("failed to generate diff")
+					continue
+				}
+
+				response.ModifiedFiles = append(response.ModifiedFiles, FileChange{
+					Path:            filePath,
+					OriginalContent: originalContent,
+					NewContent:      newContent,
+					Diff:            diff,
+				})
+
+				log.Debug().
+					Str("file", filePath).
+					Int("diff_length", len(diff)).
+					Msg("detected modified file")
+			}
+		}
 	}
 
-	filePath := filepath.Join(s.WorkspaceRoot, targetFile)
-	newContent, err := os.ReadFile(filePath)
-	if err != nil {
-		log.Warn().
-			Err(err).
-			Str("target_file", targetFile).
-			Msg("target file not found after execution, using extracted code from output")
-		return extractCode(stdout)
+	// Find new files
+	for filePath, content := range currentFiles {
+		if _, existed := originalFiles[filePath]; !existed {
+			response.NewFiles = append(response.NewFiles, FileInfo{
+				Path:    filePath,
+				Content: content,
+			})
+
+			log.Debug().
+				Str("file", filePath).
+				Msg("detected new file")
+		}
+	}
+}
+
+// buildPromptWithFileReference creates a prompt referencing the file (like Copilot's pin)
+func buildPromptWithFileReference(request CodeGenerationRequest) string {
+	if request.ContextFile == "" {
+		return request.Prompt
 	}
 
-	newContentStr := string(newContent)
+	var prompt strings.Builder
+	prompt.WriteString(fmt.Sprintf("📌 Reference file: %s", request.ContextFile))
 
-	// File unchanged - return extracted code from stdout
-	if originalContent == newContentStr {
-		log.Debug().
-			Str("target_file", targetFile).
-			Msg("file unchanged, using extracted code from output")
-
-		return extractCode(stdout)
+	// Add optional line range
+	if request.StartLine > 0 && request.EndLine > 0 {
+		prompt.WriteString(fmt.Sprintf(" (lines %d-%d)", request.StartLine, request.EndLine))
 	}
 
-	diff, err := generateUnifiedDiff(originalContent, newContentStr, targetFile)
-	if err != nil {
-		log.Error().
-			Err(err).
-			Str("target_file", targetFile).
-			Msg("failed to generate diff, returning new content")
+	prompt.WriteString("\n\n")
+	prompt.WriteString(request.Prompt)
 
-		return newContentStr
+	return prompt.String()
+}
+
+// determineMainCodeChange selects the primary code change based on precedence rules
+func determineMainCodeChange(
+	contextFile string,
+	modifiedFiles []FileChange,
+	newFiles []FileInfo,
+) *CodeChange {
+	// precedence rules: if context file was modified, use it
+	if contextFile != "" {
+		for _, fc := range modifiedFiles {
+			if fc.Path == contextFile {
+				return &CodeChange{
+					Code:     fc.NewContent,
+					FileName: fc.Path,
+					FileType: FileTypeModified,
+				}
+			}
+		}
 	}
 
-	if diff != "" {
-		log.Debug().
-			Str("target_file", targetFile).
-			Int("diff_length", len(diff)).
-			Msg("generated diff for modified file")
-
-		return diff
+	// precedence rules: if only one file was modified, use it
+	if len(modifiedFiles) == 1 && len(newFiles) == 0 {
+		fc := modifiedFiles[0]
+		return &CodeChange{
+			Code:     fc.NewContent,
+			FileName: fc.Path,
+			FileType: FileTypeModified,
+		}
 	}
 
-	// Diff generation returned "" due to some error, use fallback
-	return newContentStr
+	// precedence rules: if only one file was created, use it
+	if len(newFiles) == 1 && len(modifiedFiles) == 0 {
+		nf := newFiles[0]
+		return &CodeChange{
+			Code:     nf.Content,
+			FileName: nf.Path,
+			FileType: FileTypeNew,
+		}
+	}
+
+	// precedence rules: use the file with the most content (largest change)
+	var largest *CodeChange
+	maxLength := 0
+
+	for _, fc := range modifiedFiles {
+		if len(fc.NewContent) > maxLength {
+			maxLength = len(fc.NewContent)
+			largest = &CodeChange{
+				Code:     fc.NewContent,
+				FileName: fc.Path,
+				FileType: FileTypeModified,
+			}
+		}
+	}
+
+	for _, nf := range newFiles {
+		if len(nf.Content) > maxLength {
+			maxLength = len(nf.Content)
+			largest = &CodeChange{
+				Code:     nf.Content,
+				FileName: nf.Path,
+				FileType: FileTypeNew,
+			}
+		}
+	}
+
+	return largest
 }
 
 // CodeGenerationRequest represents a request to generate code
 type CodeGenerationRequest struct {
 	Prompt      string
-	TargetFile  string // Optional: file to pin as context (like Copilot)
+	ContextFile string // Optional: file to reference as context (like Copilot's pinned file)
 	StartLine   int    // Optional: start of highlighted range (1-indexed)
 	EndLine     int    // Optional: end of highlighted range (1-indexed)
 	ExampleDirs []string
 }
 
-// CodeGenerationResponse represents Claude Code's response
+// CodeGenerationResponse represents Claude Code's comprehensive response
 type CodeGenerationResponse struct {
-	Code       string
-	RawOutput  string
-	TargetFile string
+	TextResponse   string       // TODO: will be removed - use RawOutput
+	RawOutput      string       // Complete stdout from Claude
+	ContextFile    string       // The file that was used as context
+	ModifiedFiles  []FileChange // Files that were changed
+	NewFiles       []FileInfo   // Files that were created
+	MainCodeChange *CodeChange  // The primary code change based on precedence rules
+}
+
+// CodeChange represents the main code change
+type CodeChange struct {
+	Code     string // Full code content after Claude modifications
+	FileName string // File name for the code file
+	// TODO: add deleted file type
+	FileType FileType // Whether this is a new or modified file
+}
+
+// FileType indicates whether a file is new or modified
+type FileType string
+
+const (
+	FileTypeNew      FileType = "new"
+	FileTypeModified FileType = "modified"
+)
+
+func (ft FileType) ToProto() nucleusv1.FileType {
+	switch ft {
+	case FileTypeNew:
+		return nucleusv1.FileType_FILE_TYPE_NEW
+	case FileTypeModified:
+		return nucleusv1.FileType_FILE_TYPE_MODIFIED
+	default:
+		return nucleusv1.FileType_FILE_TYPE_UNSPECIFIED
+	}
+}
+
+// FileChange represents a modified file with diff
+type FileChange struct {
+	Path            string // Relative path from workspace root
+	OriginalContent string
+	NewContent      string
+	Diff            string // Unified diff format
+}
+
+// FileInfo represents a new or complete file
+type FileInfo struct {
+	Path    string // Relative path from workspace root
+	Content string // Complete file content
+}
+
+// extractTextResponse extracts Claude's text explanation from the output
+func extractTextResponse(output string) string {
+	var textParts []string
+	scanner := bufio.NewScanner(strings.NewReader(output))
+
+	inCodeBlock := false
+
+	for scanner.Scan() {
+		line := scanner.Text()
+
+		if strings.HasPrefix(line, "```") {
+			inCodeBlock = !inCodeBlock
+			continue
+		}
+
+		if !inCodeBlock && strings.TrimSpace(line) != "" {
+			textParts = append(textParts, line)
+		}
+	}
+
+	return strings.Join(textParts, "\n")
 }
 
 // extractCode extracts code blocks from Claude's response
