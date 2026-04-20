@@ -37,13 +37,16 @@ func NewClaudeCodeSession(projectID, workspaceRoot string) (*ClaudeCodeSession, 
 func verifyClaudeCode() error {
 	cmd := exec.Command("claude", "--version")
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("claude command not found. Install: npm install -g @anthropic-ai/claude-code")
+		return fmt.Errorf("claude command not found.")
 	}
 	return nil
 }
 
 // Generate generates code using Claude Code with workspace context
-func (s *ClaudeCodeSession) Generate(ctx context.Context, request CodeGenerationRequest) (*CodeGenerationResponse, error) {
+func (s *ClaudeCodeSession) Generate(
+	ctx context.Context,
+	request CodeGenerationRequest,
+) (*CodeGenerationResponse, error) {
 	log.Info().
 		Str("project_id", s.ProjectID).
 		Str("context_file", request.ContextFile).
@@ -141,7 +144,10 @@ func (s *ClaudeCodeSession) snapshotWorkspace() map[string]string {
 }
 
 // detectChanges compares before/after snapshots and populates the response
-func (s *ClaudeCodeSession) detectChanges(originalFiles map[string]string, response *CodeGenerationResponse) {
+func (s *ClaudeCodeSession) detectChanges(
+	originalFiles map[string]string,
+	response *CodeGenerationResponse,
+) {
 	currentFiles := s.snapshotWorkspace()
 
 	// Find modified files
